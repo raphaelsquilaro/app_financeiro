@@ -63,6 +63,91 @@ class FirebaseAuthenticationTest(unittest.TestCase):
             app.authenticate("user@example.com", "password1", register=True)
 
 
+class GeminiFinancialAnalysisTest(unittest.TestCase):
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-gemini-key"})
+    @patch("app.requests.post")
+    def test_analysis_uses_stateless_gemini_request_without_account_identity(self, post):
+        response = Mock()
+        response.ok = True
+        response.status_code = 200
+        response.json.return_value = {
+            "steps": [
+                {"type": "thought", "text": "Este conteúdo não deve ser exibido."},
+                {
+                    "type": "model_output",
+                    "content": [
+                        {"type": "text", "text": "Suas despesas estão estáveis."}
+                    ],
+                },
+            ]
+        }
+        post.return_value = response
+        transactions = [
+            {
+                "id": "private-document-id",
+                "owner_uid": "private-user-id",
+                "type": "income",
+                "amount_cents": 250000,
+                "date": date(2026, 10, 1),
+                "description": "Salário",
+            },
+            {
+                "id": "another-private-document-id",
+                "owner_uid": "private-user-id",
+                "type": "expense",
+                "amount_cents": 40000,
+                "date": date(2026, 10, 5),
+                "description": "Mercado",
+            },
+        ]
+
+        result = app.analyze_finances(transactions)
+
+        self.assertEqual(result, "Suas despesas estão estáveis.")
+        self.assertNotIn("conteúdo não deve ser exibido", result)
+        self.assertEqual(
+            post.call_args.args[0], app.GEMINI_INTERACTIONS_URL
+        )
+        self.assertEqual(
+            post.call_args.kwargs["headers"],
+            {"x-goog-api-key": "test-gemini-key"},
+        )
+        request_body = post.call_args.kwargs["json"]
+        self.assertEqual(request_body["model"], app.GEMINI_MODEL)
+        self.assertFalse(request_body["store"])
+        self.assertNotIn("private-user-id", request_body["input"])
+        self.assertNotIn("private-document-id", request_body["input"])
+        self.assertIn("Salário", request_body["input"])
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test-gemini-key"})
+    @patch("app.requests.post")
+    def test_invalid_gemini_key_returns_configuration_error(self, post):
+        response = Mock()
+        response.ok = False
+        response.status_code = 403
+        post.return_value = response
+
+        with self.assertRaisesRegex(
+            app.GeminiConfigurationError, "recusou a chave configurada"
+        ):
+            app.analyze_finances(
+                [
+                    {
+                        "type": "expense",
+                        "amount_cents": 100,
+                        "date": date(2026, 10, 5),
+                        "description": "Café",
+                    }
+                ]
+            )
+
+    @patch("app.requests.post")
+    def test_empty_transactions_do_not_call_gemini(self, post):
+        with self.assertRaisesRegex(app.GeminiAnalysisError, "ao menos um lançamento"):
+            app.analyze_finances([])
+        post.assert_not_called()
+
+
 class AuthenticationScreenTest(unittest.TestCase):
     def test_signup_rejects_mismatched_passwords(self):
         test_app = AppTest.from_file(str(app.APP_DIR / "app.py")).run()
@@ -139,11 +224,29 @@ class DashboardScreenTest(unittest.TestCase):
                 "delete_income-1",
                 "edit_expense-1",
                 "delete_expense-1",
+                "financial_analysis_button",
                 "mobile_nav_home",
                 "mobile_nav_add",
                 "mobile_nav_palette",
                 "mobile_nav_logout",
             }.issubset(button_keys)
+        )
+
+    def test_financial_analysis_button_opens_dialog(self):
+        test_app = AppTest.from_function(
+            _render_dashboard_with_fake_transactions
+        ).run()
+        analysis_button = [
+            button
+            for button in test_app.button
+            if button.key == "financial_analysis_button"
+        ][0]
+        analysis_button.click()
+        test_app.run()
+
+        self.assertEqual(len(test_app.exception), 0)
+        self.assertTrue(
+            any(button.key == "generate_financial_analysis" for button in test_app.button)
         )
 
 
