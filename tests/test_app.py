@@ -77,5 +77,75 @@ class AuthenticationScreenTest(unittest.TestCase):
         self.assertEqual(test_app.error[0].value, "As senhas não conferem.")
 
 
+def _render_dashboard_with_fake_transactions():
+    from datetime import datetime, timezone
+
+    import app
+
+    class Snapshot:
+        def __init__(self, item_id, data):
+            self.id = item_id
+            self.data = data
+
+        def to_dict(self):
+            return self.data
+
+    class Collection:
+        def collection(self, _name):
+            return self
+
+        def where(self, *_args):
+            return self
+
+        def stream(self):
+            transaction_date = datetime.now(timezone.utc)
+            return iter(
+                [
+                    Snapshot(
+                        "income-1",
+                        {
+                            "type": "income",
+                            "amount_cents": 250000,
+                            "date": transaction_date,
+                            "description": "Salário",
+                        },
+                    ),
+                    Snapshot(
+                        "expense-1",
+                        {
+                            "type": "expense",
+                            "amount_cents": 12500,
+                            "date": transaction_date,
+                            "description": "Mercado",
+                        },
+                    ),
+                ]
+            )
+
+    app._render_dashboard(Collection(), "test-user")
+
+
+class DashboardScreenTest(unittest.TestCase):
+    def test_dashboard_renders_transactions_and_mobile_navigation(self):
+        test_app = AppTest.from_function(
+            _render_dashboard_with_fake_transactions
+        ).run()
+
+        self.assertEqual(len(test_app.exception), 0)
+        button_keys = {button.key for button in test_app.button}
+        self.assertTrue(
+            {
+                "edit_income-1",
+                "delete_income-1",
+                "edit_expense-1",
+                "delete_expense-1",
+                "mobile_nav_home",
+                "mobile_nav_add",
+                "mobile_nav_palette",
+                "mobile_nav_logout",
+            }.issubset(button_keys)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

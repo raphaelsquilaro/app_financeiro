@@ -236,6 +236,93 @@ def _set_page(page: str, transaction_id: str | None = None) -> None:
     st.rerun()
 
 
+def _apply_mobile_styles() -> None:
+    st.html(
+        """
+        <style>
+        .st-key-mobile_navigation {
+            display: none;
+        }
+
+        @media (max-width: 640px) {
+            [data-testid="stMainBlockContainer"] {
+                padding: 1.25rem 1rem 2rem !important;
+            }
+
+            .stApp:has(.st-key-mobile_navigation) [data-testid="stMainBlockContainer"] {
+                padding-bottom: 7rem !important;
+            }
+
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                border-radius: 18px !important;
+            }
+
+            .st-key-add_transaction {
+                display: none !important;
+            }
+
+            .st-key-mobile_navigation {
+                position: fixed;
+                z-index: 999;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                display: block;
+                padding: 0.55rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom));
+                border-top: 1px solid rgba(128, 128, 128, 0.2);
+                background: var(--background-color);
+                box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.08);
+            }
+
+            .st-key-mobile_navigation button {
+                min-height: 3rem;
+                padding: 0.5rem 0.2rem !important;
+                border-radius: 12px !important;
+                font-size: 0.78rem !important;
+                box-shadow: none !important;
+            }
+        }
+        </style>
+        """
+    )
+
+
+def _render_mobile_navigation() -> None:
+    with st.container(key="mobile_navigation"):
+        home, add, palette, logout = st.columns(4, gap="small", wrap=False)
+        if home.button(
+            "Início",
+            icon=":material/home:",
+            width="stretch",
+            key="mobile_nav_home",
+        ):
+            _set_page("dashboard")
+        if add.button(
+            "Novo",
+            icon=":material/add:",
+            type="primary",
+            width="stretch",
+            key="mobile_nav_add",
+        ):
+            _set_page("transaction_form")
+        if palette.button(
+            "Cores",
+            icon=":material/palette:",
+            width="stretch",
+            key="mobile_nav_palette",
+        ):
+            _set_page("palette")
+        if logout.button(
+            "Sair",
+            icon=":material/logout:",
+            width="stretch",
+            key="mobile_nav_logout",
+        ):
+            for key in ("uid", "email", "page", "editing_transaction_id"):
+                st.session_state.pop(key, None)
+            st.rerun()
+
+
 @st.dialog("Excluir lançamento")
 def _confirm_delete(
     db: firestore.Client, owner_uid: str, transaction_id: str, description: str
@@ -263,51 +350,51 @@ def _confirm_delete(
 
 
 def _render_authentication() -> None:
-    st.title("Meu financeiro")
+    st.title("Meu financeiro", icon=":material/account_balance_wallet:")
     st.caption("Organize suas receitas, despesas e acompanhe seu saldo em tempo real.")
-    mode = st.segmented_control(
-        "Acesso",
-        options=["Entrar", "Criar conta"],
-        default="Entrar",
-        label_visibility="collapsed",
-        key="auth_mode",
-    )
-    if mode is None:
-        mode = "Entrar"
-
-    with st.form("auth_form"):
-        email = st.text_input("E-mail", autocomplete="email", placeholder="exemplo@email.com")
-        password = st.text_input(
-            "Senha",
-            type="password",
-            placeholder="Sua senha de acesso",
-            autocomplete=(
-                "new-password" if mode == "Criar conta" else "current-password"
-            ),
+    with st.container(border=True):
+        mode = st.segmented_control(
+            "Acesso",
+            options=["Entrar", "Criar conta"],
+            default="Entrar",
+            label_visibility="collapsed",
+            key="auth_mode",
         )
-        confirmation = None
-        if mode == "Criar conta":
-            confirmation = st.text_input(
-                "Confirme a senha",
+        if mode is None:
+            mode = "Entrar"
+
+        with st.form("auth_form"):
+            email = st.text_input("E-mail", autocomplete="email", placeholder="exemplo@email.com")
+            password = st.text_input(
+                "Senha",
                 type="password",
-                placeholder="Repita a senha para confirmação",
-                autocomplete="new-password",
+                placeholder="Sua senha de acesso",
+                autocomplete=(
+                    "new-password" if mode == "Criar conta" else "current-password"
+                ),
             )
-        submitted = st.form_submit_button(
-            "Entrar" if mode == "Entrar" else "Criar conta",
-            type="primary",
-            width="stretch",
-        )
+            confirmation = None
+            if mode == "Criar conta":
+                confirmation = st.text_input(
+                    "Confirme a senha",
+                    type="password",
+                    placeholder="Repita a senha para confirmação",
+                    autocomplete="new-password",
+                )
+            submitted = st.form_submit_button(
+                "Entrar" if mode == "Entrar" else "Criar conta",
+                type="primary",
+                width="stretch",
+            )
 
-    if not submitted:
-        st.write("")
-        if st.button(
+        if not submitted and st.button(
             "Configurar paleta de cores",
             icon=":material/palette:",
             width="stretch",
             key="auth_palette_btn",
         ):
             _set_page("palette")
+    if not submitted:
         return
     if not email.strip() or not password:
         st.error("Preencha o e-mail e a senha.")
@@ -448,9 +535,6 @@ def _render_dashboard(db: firestore.Client, owner_uid: str) -> None:
     income_color = current_palette.get("incomeColor", DEFAULT_PALETTE["incomeColor"])
     expense_color = current_palette.get("expenseColor", DEFAULT_PALETTE["expenseColor"])
 
-    income_tint = hex_to_rgba(income_color, 0.12)
-    expense_tint = hex_to_rgba(expense_color, 0.12)
-
     with st.sidebar:
         st.html(
             """
@@ -521,8 +605,8 @@ def _render_dashboard(db: firestore.Client, owner_uid: str) -> None:
                 st.session_state.pop(key, None)
             st.rerun()
 
-    st.title("Meu financeiro")
-    st.caption("Visão geral do seu fluxo de caixa e movimentações financeiras.")
+    st.title("Meu financeiro", icon=":material/account_balance_wallet:")
+    st.caption("Acompanhe suas entradas, saídas e o saldo da sua conta.")
 
     try:
         transactions = _load_transactions(db, owner_uid)
@@ -544,70 +628,42 @@ def _render_dashboard(db: firestore.Client, owner_uid: str) -> None:
     saldo_color = income_color if saldo_total >= 0 else expense_color
     saldo_tint = hex_to_rgba(saldo_color, 0.12)
 
-    metric_columns = st.columns(3)
-    with metric_columns[0]:
-        st.html(
-            f"""
-            <div style="
-                background: linear-gradient(135deg, {income_tint} 0%, rgba(128,128,128,0.02) 100%);
-                border: 1px solid {hex_to_rgba(income_color, 0.28)};
-                border-radius: 14px;
-                padding: 1rem 1.15rem;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-            ">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                    <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">Receitas</span>
-                    <span style="color: {income_color}; font-weight: 800; font-size: 0.95rem;">↗</span>
-                </div>
-                <div style="font-size: 1.45rem; font-weight: 800; color: {income_color}; letter-spacing: -0.02em;">
-                    {format_brl(income_total)}
-                </div>
+    st.html(
+        f"""
+        <div style="
+            margin: 1.25rem 0 1rem;
+            padding: 1.35rem 1.4rem;
+            border: 1px solid {hex_to_rgba(saldo_color, 0.24)};
+            border-radius: 22px;
+            background: linear-gradient(135deg, {saldo_tint}, rgba(128, 128, 128, 0.03));
+        ">
+            <div style="font-size: 0.82rem; font-weight: 700; opacity: 0.72;">
+                SALDO ATUAL
             </div>
-            """
-        )
-    with metric_columns[1]:
-        st.html(
-            f"""
             <div style="
-                background: linear-gradient(135deg, {expense_tint} 0%, rgba(128,128,128,0.02) 100%);
-                border: 1px solid {hex_to_rgba(expense_color, 0.28)};
-                border-radius: 14px;
-                padding: 1rem 1.15rem;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+                margin-top: 0.35rem;
+                color: {saldo_color};
+                font-size: clamp(1.8rem, 7vw, 2.45rem);
+                font-weight: 800;
+                letter-spacing: -0.04em;
+                line-height: 1.2;
+                overflow-wrap: anywhere;
             ">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                    <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">Despesas</span>
-                    <span style="color: {expense_color}; font-weight: 800; font-size: 0.95rem;">↘</span>
-                </div>
-                <div style="font-size: 1.45rem; font-weight: 800; color: {expense_color}; letter-spacing: -0.02em;">
-                    {format_brl(expense_total)}
-                </div>
+                {format_brl(saldo_total)}
             </div>
-            """
-        )
-    with metric_columns[2]:
-        st.html(
-            f"""
-            <div style="
-                background: linear-gradient(135deg, {saldo_tint} 0%, rgba(128,128,128,0.02) 100%);
-                border: 1px solid {hex_to_rgba(saldo_color, 0.28)};
-                border-radius: 14px;
-                padding: 1rem 1.15rem;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-            ">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                    <span style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8;">Saldo Líquido</span>
-                    <span style="font-weight: 700; font-size: 0.95rem;">{'📈' if saldo_total >= 0 else '📉'}</span>
-                </div>
-                <div style="font-size: 1.45rem; font-weight: 800; color: {saldo_color}; letter-spacing: -0.02em;">
-                    {format_brl(saldo_total)}
-                </div>
+            <div style="margin-top: 0.4rem; font-size: 0.86rem; opacity: 0.72;">
+                Resultado entre receitas e despesas
             </div>
-            """
-        )
+        </div>
+        """
+    )
 
-    count_label = f"({len(transactions)})" if transactions else ""
-    st.html(f'<div style="margin: 1.75rem 0 0.75rem 0; font-size: 1.25rem; font-weight: 800;">Lançamentos {count_label}</div>')
+    income_column, expense_column = st.columns(2, border=True)
+    income_column.metric("Receitas", format_brl(income_total))
+    expense_column.metric("Despesas", format_brl(expense_total))
+
+    st.subheader("Lançamentos", icon=":material/receipt_long:")
+    st.caption(f"{len(transactions)} movimentações")
 
     if not transactions:
         with st.container(border=True):
@@ -624,70 +680,46 @@ def _render_dashboard(db: firestore.Client, owner_uid: str) -> None:
             )
 
     for transaction in transactions:
-        with st.container(border=True):
-            col_icon, col_info, col_amount, col_edit, col_del = st.columns(
-                [0.7, 5.0, 2.7, 0.8, 0.8], vertical_alignment="center"
-            )
+        with st.container(border=True, key=f"transaction-{transaction['id']}"):
             transaction_type = transaction.get("type")
             is_income = transaction_type == "income"
             label = "Receita" if is_income else "Despesa"
             amount_str = format_brl(transaction.get("amount_cents", 0))
             transaction_date = _as_date(transaction.get("date")).strftime("%d/%m/%Y")
             description = transaction.get("description", "Sem descrição")
-            amount_color = income_color if is_income else expense_color
-            tint = income_tint if is_income else expense_tint
-            icon_sym = "↗" if is_income else "↘"
             sign = "+" if is_income else "-"
 
-            col_icon.html(
-                f"""
-                <div style="
-                    width: 38px;
-                    height: 38px;
-                    border-radius: 50%;
-                    background-color: {tint};
-                    color: {amount_color};
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 1.15rem;
-                    font-weight: 800;
-                ">
-                    {icon_sym}
-                </div>
-                """
-            )
-            with col_info:
+            info_column, amount_column = st.columns([1.5, 1])
+            with info_column:
                 st.markdown(f"**{description}**")
-                st.caption(f"{label} · {transaction_date}")
+                st.badge(
+                    label,
+                    icon=":material/trending_up:" if is_income else ":material/trending_down:",
+                    color="green" if is_income else "red",
+                )
+                st.caption(transaction_date)
+            with amount_column:
+                st.markdown(
+                    f"**{sign} {amount_str}**",
+                    text_alignment="right",
+                )
 
-            col_amount.html(
-                f"""
-                <div style="
-                    text-align: right;
-                    color: {amount_color};
-                    font-weight: 800;
-                    font-size: 1.1rem;
-                    letter-spacing: -0.01em;
-                ">
-                    {sign} {amount_str}
-                </div>
-                """
-            )
-
-            if col_edit.button(
+            edit_column, delete_column = st.columns(2)
+            if edit_column.button(
                 "Editar",
                 key=f"edit_{transaction['id']}",
                 icon=":material/edit:",
                 help="Editar lançamento",
+                width="stretch",
             ):
                 _set_page("transaction_form", transaction["id"])
 
-            if col_del.button(
+            if delete_column.button(
                 "Excluir",
                 key=f"delete_{transaction['id']}",
                 icon=":material/delete:",
                 help="Excluir lançamento",
+                width="stretch",
             ):
                 _confirm_delete(
                     db,
@@ -708,6 +740,7 @@ def _render_dashboard(db: firestore.Client, owner_uid: str) -> None:
                 width="stretch",
             ):
                 _set_page("transaction_form")
+    _render_mobile_navigation()
 
 
 def main() -> None:
@@ -719,6 +752,7 @@ def main() -> None:
     if "current_palette" not in st.session_state:
         st.session_state.current_palette = load_palette()
     apply_palette_css(st.session_state.current_palette)
+    _apply_mobile_styles()
 
     st.session_state.setdefault("page", "dashboard")
     st.session_state.setdefault("editing_transaction_id", None)
